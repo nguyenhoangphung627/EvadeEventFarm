@@ -1,0 +1,377 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("EvadeSafeMobile") then
+    PlayerGui.EvadeSafeMobile:Destroy()
+end
+
+local AfkFarmEnabled = false
+local AutoItemEnabled = false
+local originalPosition = nil
+local noItemTimer = 0 
+local isCollapsed = false 
+
+local savedAfkState = false 
+local savedCollectState = false
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "EvadeSafeMobile"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = PlayerGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 210, 0, 160)
+MainFrame.Position = UDim2.new(0.1, 0, 0.4, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true 
+MainFrame.ClipsDescendants = true 
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(0.55, 0, 0, 35)
+Title.Position = UDim2.new(0.05, 0, 0, 0)
+Title.Text = "EventPlay"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 15
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
+
+local ItemCounter = Instance.new("TextLabel")
+ItemCounter.Size = UDim2.new(0.15, 0, 0, 35)
+ItemCounter.Position = UDim2.new(0.63, 0, 0, 0)
+ItemCounter.Text = "[0]"
+ItemCounter.TextColor3 = Color3.fromRGB(255, 200, 0)
+ItemCounter.BackgroundTransparency = 1
+ItemCounter.Font = Enum.Font.SourceSansBold
+ItemCounter.TextSize = 13
+ItemCounter.TextXAlignment = Enum.TextXAlignment.Right
+ItemCounter.Parent = MainFrame
+
+local ToggleSizeBtn = Instance.new("TextButton")
+ToggleSizeBtn.Size = UDim2.new(0, 25, 0, 25)
+ToggleSizeBtn.Position = UDim2.new(0.83, 0, 0, 5)
+ToggleSizeBtn.Text = "-"
+ToggleSizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleSizeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+ToggleSizeBtn.Font = Enum.Font.SourceSansBold
+ToggleSizeBtn.TextSize = 16
+ToggleSizeBtn.Parent = MainFrame
+
+local UICornerToggle = Instance.new("UICorner")
+UICornerToggle.CornerRadius = UDim.new(0, 6)
+UICornerToggle.Parent = ToggleSizeBtn
+
+local AfkFarmBtn = Instance.new("TextButton")
+AfkFarmBtn.Size = UDim2.new(0.9, 0, 0, 38)
+AfkFarmBtn.Position = UDim2.new(0.05, 0, 0.23, 0)
+AfkFarmBtn.Font = Enum.Font.SourceSansBold
+AfkFarmBtn.TextSize = 12
+AfkFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AfkFarmBtn.Parent = MainFrame
+
+local UICorner2 = Instance.new("UICorner")
+UICorner2.CornerRadius = UDim.new(0, 8)
+UICorner2.Parent = AfkFarmBtn
+
+local AutoItemBtn = Instance.new("TextButton")
+AutoItemBtn.Size = UDim2.new(0.9, 0, 0, 38)
+AutoItemBtn.Position = UDim2.new(0.05, 0, 0.51, 0)
+AutoItemBtn.Font = Enum.Font.SourceSansBold
+AutoItemBtn.TextSize = 12
+AutoItemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoItemBtn.Parent = MainFrame
+
+local UICorner3 = Instance.new("UICorner")
+UICorner3.CornerRadius = UDim.new(0, 8)
+UICorner3.Parent = AutoItemBtn
+
+local Credits = Instance.new("TextLabel")
+Credits.Size = UDim2.new(0.9, 0, 0, 25)
+Credits.Position = UDim2.new(0.05, 0, 0.8, 0)
+Credits.Text = "Make by tiktok: nghphg21011"
+Credits.TextColor3 = Color3.fromRGB(180, 180, 180)
+Credits.BackgroundTransparency = 1
+Credits.Font = Enum.Font.SourceSansItalic
+Credits.TextSize = 11
+Credits.TextXAlignment = Enum.TextXAlignment.Center
+Credits.Parent = MainFrame
+
+local function updateButtonVisuals()
+    if AfkFarmEnabled then
+        AfkFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+        AfkFarmBtn.Text = "AFK FARM: [ON]"
+    else
+        AfkFarmBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+        AfkFarmBtn.Text = "AFK FARM: [OFF]"
+    end
+
+    if AutoItemEnabled then
+        AutoItemBtn.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+        AutoItemBtn.Text = "AUTO ITEM: [ON]"
+    else
+        AutoItemBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+        AutoItemBtn.Text = "AUTO ITEM: [OFF]"
+    end
+end
+updateButtonVisuals()
+
+ToggleSizeBtn.MouseButton1Click:Connect(function()
+    isCollapsed = not isCollapsed
+    
+    local targetSize
+    if isCollapsed then
+        targetSize = UDim2.new(0, 210, 0, 35) 
+        ToggleSizeBtn.Text = "+"
+        AfkFarmBtn.Visible = false
+        AutoItemBtn.Visible = false
+        Credits.Visible = false
+    else
+        targetSize = UDim2.new(0, 210, 0, 160) 
+        ToggleSizeBtn.Text = "-"
+    end
+    
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(MainFrame, tweenInfo, {Size = targetSize})
+    tween:Play()
+    
+    if not isCollapsed then
+        tween.Completed:Wait()
+        if not isCollapsed then
+            AfkFarmBtn.Visible = true
+            AutoItemBtn.Visible = true
+            Credits.Visible = true
+        end
+    end
+end)
+
+local function isPlayerAsset(instance)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character and instance:IsDescendantOf(player.Character) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getAllItems()
+    local items = {}
+    for _, v in pairs(workspace:GetDescendants()) do
+        if (v:IsA("BasePart") or v:IsA("Model")) then
+            local nameLower = string.lower(v.Name)
+            if string.find(nameLower, "bubble") or string.find(nameLower, "coconut") then
+                local isVisualEffect = v:FindFirstChildWhichIsA("ParticleEmitter") 
+                                    or v:FindFirstChildWhichIsA("Trail") 
+                                    or v:FindFirstChildWhichIsA("Beam")
+                                    or v.ClassName == "Accessory"
+                local hasAnimation = v:FindFirstChildWhichIsA("Animation") or v:FindFirstChildWhichIsA("Animator")
+                
+                if not isVisualEffect and not hasAnimation and not isPlayerAsset(v) then
+                    local part = v:IsA("BasePart") and v or v:FindFirstChildWhichIsA("BasePart")
+                    if part then
+                        table.insert(items, part)
+                    end
+                end
+            end
+        end
+    end
+    return items
+end
+
+local function isNextbotNear(position)
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:GetAttribute("Nextbot") == true then
+            local root = v:FindFirstChild("HumanoidRootPart") or v:FindFirstChildWhichIsA("BasePart")
+            if root then
+                local distance = (position - root.Position).Magnitude
+                if distance <= 12 then 
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function getClosestSafeItem(hrp, items)
+    local closest, minDst = nil, math.huge
+    for _, part in ipairs(items) do
+        local dst = (hrp.Position - part.Position).Magnitude
+        if dst < minDst and not isNextbotNear(part.Position) then
+            closest = part
+            minDst = dst
+        end
+    end
+    return closest
+end
+
+local function teleportTo(hrp, pos, duration)
+    local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = CFrame.new(pos)})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+task.spawn(function()
+    while true do
+        local items = getAllItems()
+        ItemCounter.Text = "[" .. tostring(#items) .. "]"
+        
+        local char = LocalPlayer.Character
+        local isDowned = char and char:GetAttribute("Downed")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if #items == 0 then
+            noItemTimer = noItemTimer + 0.5
+            if noItemTimer >= 20 then
+                if AfkFarmEnabled then
+                    AfkFarmEnabled = false
+                    updateButtonVisuals()
+                    if hrp then hrp.Anchored = false end
+                end
+            end
+        else
+            if noItemTimer >= 20 and savedAfkState and not isDowned then
+                task.wait(1)
+                if hrp then
+                    AfkFarmEnabled = true
+                    updateButtonVisuals()
+                    originalPosition = hrp.Position + Vector3.new(0, 200, 0)
+                    hrp.CFrame = CFrame.new(originalPosition)
+                    task.wait(0.1)
+                    hrp.Anchored = true
+                end
+            end
+            noItemTimer = 0
+        end
+
+        if AutoItemEnabled and not isDowned and #items > 0 then
+            if hrp then
+                local item = getClosestSafeItem(hrp, items)
+                if item then
+                    local startPos = hrp.Position
+                    hrp.Anchored = false
+                    
+                    teleportTo(hrp, item.Position, 0.2)
+                    
+                    pcall(function()
+                        local collectId = item.Parent:GetAttribute("Id") or item:GetAttribute("Id") or "a19ac91bff904b7385e826fd6a23dc01"
+                        ReplicatedStorage.Events.Collectibles.Invoke:InvokeServer(LocalPlayer, collectId, "Collect")
+                    end)
+                    
+                    task.wait(1)
+                    isDowned = char and char:GetAttribute("Downed")
+                    
+                    if AutoItemEnabled and not isDowned and noItemTimer < 20 then
+                        if AfkFarmEnabled and originalPosition then
+                            teleportTo(hrp, originalPosition, 0.2)
+                            hrp.Anchored = true
+                        else
+                            teleportTo(hrp, startPos, 0.2)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(2) 
+        local char = LocalPlayer.Character
+        local isDowned = char and char:GetAttribute("Downed")
+        
+        if AfkFarmEnabled and not AutoItemEnabled and not isDowned and noItemTimer < 20 then
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp and hrp.Anchored == false then
+                originalPosition = hrp.Position + Vector3.new(0, 200, 0)
+                hrp.CFrame = CFrame.new(originalPosition)
+                task.wait(0.1)
+                hrp.Anchored = true
+            end
+        end
+    end
+end)
+
+local function setupCharacter(char)
+    char:GetAttributeChangedSignal("Downed"):Connect(function()
+        local isDowned = char:GetAttribute("Downed")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        
+        if isDowned then
+            AutoItemEnabled = false
+            AfkFarmEnabled = false
+            updateButtonVisuals()
+            if hrp then hrp.Anchored = false end
+        else
+            task.wait(1)
+            if hrp then
+                originalPosition = hrp.Position + Vector3.new(0, 200, 0)
+                hrp.CFrame = CFrame.new(originalPosition)
+                task.wait(0.2)
+                hrp.Anchored = true
+                
+                AfkFarmEnabled = savedAfkState
+                AutoItemEnabled = savedCollectState
+                updateButtonVisuals()
+            end
+        end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    setupCharacter(char)
+end)
+
+if LocalPlayer.Character then
+    setupCharacter(LocalPlayer.Character)
+end
+
+AfkFarmBtn.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    local isDowned = char and char:GetAttribute("Downed")
+    if isDowned then return end 
+    
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    AfkFarmEnabled = not AfkFarmEnabled
+    savedAfkState = AfkFarmEnabled 
+    updateButtonVisuals()
+    
+    if AfkFarmEnabled then
+        originalPosition = hrp.Position + Vector3.new(0, 200, 0)
+        hrp.CFrame = CFrame.new(originalPosition)
+        task.wait(0.1)
+        hrp.Anchored = true
+    else
+        hrp.Anchored = false
+    end
+end)
+
+AutoItemBtn.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    local isDowned = char and char:GetAttribute("Downed")
+    if isDowned then return end 
+    
+    AutoItemEnabled = not AutoItemEnabled
+    savedCollectState = AutoItemEnabled 
+    updateButtonVisuals()
+end)
+
+LocalPlayer.Idled:Connect(function()
+    local virtualUser = game:GetService("VirtualUser")
+    virtualUser:CaptureController()
+    virtualUser:ClickButton2(Vector2.new(0, 0))
+end)
