@@ -1,0 +1,647 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local AfkFarmEnabled = false
+local AutoItemEnabled = false
+local AutoVoteEnabled = false
+local FullbrightEnabled = false
+local TargetMap = ""
+
+local BhopSystemMaster = false 
+local AutoBhopEnabled   = false   
+
+local originalPosition = nil
+local noItemTimer = 0
+
+local savedAfkState = false
+local savedCollectState = false
+local savedVoteState = false
+local isFakeMapDisabled = false
+
+local originalLighting = {
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime,
+    FogEnd = Lighting.FogEnd,
+    GlobalShadows = Lighting.GlobalShadows
+}
+
+local itemPositionCache = {}
+
+local MapList = {
+    "Indoor Courtyard", "Four Corners", "Brutalist Void", "Rooftops", "Military Base", "Backrooms", "Underground Facility", "Art Gallery", "Ikea", "Silver Mall", "Elysium Laboratory", "Crossroads", "Arid Ruins", "Neighborhood", "Icebreaker", "Drab", "Facade", "Complex", "Kyoto", "Elysium Tower", "Winter City", "Elysium Moonbase", "Terror Hotel", "Jungle", "Station", "Citadel", "Pit Stop", "Corporation", "Acropolis", "Campus", "Industry", "Construction Site", "Canyon", "Bedroom", "Imperial Palace", "Farm", "Seraph Research", "Construct", "Wild West", "Roblox Mansion", "Chaos Canyon", "Glasshouses", "Headquarters", "Old Crossroads", "Raven Rock", "Rocket Arena", "Desert Bus", "Maze", "Loop", "Poolrooms", "Library", "Mayday", "Scorching Outpost", "Alleyways", "Funrooms", "Sunken Cavern", "Indoor Water Park", "Garden", "Mansion", "Tunnel", "Labyrinth", "Shire", "Abstract", "Work Facility", "Hexagonal", "Hedge Maze", "Forest", "Pillars", "Sewers", "Valley View Mall", "Vibrance", "Train Terminal", "Borealis", "Winterfall Kingdom", "Mictlan", "Cemetery", "Hanami", "Hallow's Rail", "Tudor Manor", "Escalera", "Necropolis", "Sinister Streets", "Winter Palace", "Festive Gathering", "Festive Workshop", "Frostlight Hollow", "Coral Reef", "Cliffshire", "Ocean Drive", "Outdoor Zoo", "Ravaged Galleon", "Water Park", "City of Sinners", "City", "Jolly Village", "Catacombs", "Coastal Town", "Warped Estate", "Cursed Cathedral", "Lakeside Cabin", "Frosty Summit", "Hokkaido", "Atoll", "Camp Cliffwood", "Inflatable Park", "Pumpkin Emporium", "Fazbear Pizzeria", "Moon", "Disco", "Greenscreen", "Town of Robloxia", "Blood Gulch", "Amphitheater", "Field", "Minecraft Cavern", "Office", "Brick Maze", "Gymnasium", "Spleef", "Ramp", "Retro Maze", "Traprooms", "Empty", "Flat", "Movement", "Robloxity", "Nemo's Rest", "Evade Lobby", "Boboception", "Minecraft Portals", "Hell Terminal", "Hole in the Wall", "Nightmare Library", "Mountain Cottage", "Nuclear Processing", "Prague Square", "NN Mall", "NN Camberturn", "NN Russia", "Line", "Rodriguh Neighborhood", "War Area", "Insane Asylum", "Death Maze",
+    "Grand Hotel", "Cyberpunk City", "Subway Terminal", "Abandoned Asylum", "Dusk", "Midnight City", "Pharaoh's Tomb", "Zen Garden", "Subterranean", "Overgrown", "Cargo Ship", "Power Plant", "Skyscraper", "Retrowave", "Aquarium", "Haunted Mansion", "Toy Factory", "Neon District"
+}
+
+local StatusGui = Instance.new("ScreenGui")
+StatusGui.Name = "KingEventStatusGui"
+StatusGui.ResetOnSpawn = false
+StatusGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local coreGuiSuccess, _ = pcall(function() StatusGui.Parent = game:GetService("CoreGui") end)
+if not coreGuiSuccess then StatusGui.Parent = PlayerGui end
+
+local MainRow = Instance.new("Frame")
+MainRow.Name = "MainRow"
+MainRow.Size = UDim2.new(0, 135, 0, 16)
+MainRow.Position = UDim2.new(1, -135, 0, 0)
+MainRow.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainRow.BackgroundTransparency = 0.3
+MainRow.BorderSizePixel = 0
+MainRow.Parent = StatusGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 4)
+UICorner.Parent = MainRow
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(45, 45, 45)
+UIStroke.Thickness = 1
+UIStroke.Parent = MainRow
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.FillDirection = Enum.FillDirection.Horizontal
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+UIListLayout.Padding = UDim.new(0, 4)
+UIListLayout.Parent = MainRow
+
+local function createStatusLabel(name, defaultText, color)
+    local label = Instance.new("TextLabel")
+    local fontSuccess = pcall(function() label.Font = Enum.Font.RobotoMono end)
+    if not fontSuccess then label.Font = Enum.Font.SourceSansBold end
+    label.Name = name
+    label.Text = defaultText
+    label.TextColor3 = color
+    label.TextSize = 10
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0, 62, 1, 0)
+    label.Parent = MainRow
+    return label
+end
+
+local FpsLabel = createStatusLabel("FpsLabel", "FPS: --", Color3.fromRGB(120, 220, 120))
+local ItemLabel = createStatusLabel("ItemLabel", "Token: 0", Color3.fromRGB(240, 200, 80))
+
+local fpsCount = 0
+local lastFpsUpdate = os.clock()
+RunService.RenderStepped:Connect(function()
+    fpsCount = fpsCount + 1
+    local now = os.clock()
+    if now - lastFpsUpdate >= 1 then
+        FpsLabel.Text = "FPS: " .. fpsCount
+        fpsCount = 0
+        lastFpsUpdate = now
+    end
+end)
+
+local FloatingGui = Instance.new("ScreenGui")
+FloatingGui.Name = "KingEventFloatingGui"
+FloatingGui.ResetOnSpawn = false
+FloatingGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local coreGuiSuccess2, _ = pcall(function() FloatingGui.Parent = game:GetService("CoreGui") end)
+if not coreGuiSuccess2 then FloatingGui.Parent = PlayerGui end
+
+local EDashButton = Instance.new("TextButton")
+EDashButton.Name = "EDashButton"
+EDashButton.Size = UDim2.new(0, 160, 0, 60)
+EDashButton.Position = UDim2.new(0.02, 0, 0.45, 0)
+EDashButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0) 
+EDashButton.BackgroundTransparency = 0.45            
+EDashButton.Text = "Bhop: OFF"
+EDashButton.TextColor3 = Color3.fromRGB(255, 255, 255) 
+local fontSuccess, _ = pcall(function() EDashButton.Font = Enum.Font.FredokaOne end)
+if not fontSuccess then EDashButton.Font = Enum.Font.SourceSansBold end
+EDashButton.TextSize = 16 
+EDashButton.Visible = false 
+EDashButton.Active = true
+EDashButton.Draggable = true
+EDashButton.Parent = FloatingGui
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 16) 
+BtnCorner.Parent = EDashButton
+
+local BtnStroke = Instance.new("UIStroke")
+BtnStroke.Color = Color3.fromRGB(255, 255, 255) 
+BtnStroke.Thickness = 2.5 
+BtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border 
+BtnStroke.Parent = EDashButton
+
+local success, UI_Library = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+
+if success and type(UI_Library) == "table" then
+    local Window = UI_Library:CreateWindow({
+        Title = "KingEvent",
+        Icon = "shield",
+        Author = "nghphg21011",
+        OpenButton = {
+            Title = "KingEvent",
+            Icon = "monitor",
+            CornerRadius = UDim.new(0, 16),
+            StrokeThickness = 2,
+            Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0)),
+            OnlyMobile = false,
+            Enabled = true,
+            Draggable = true,
+        }
+    })
+
+    local TabMain = Window:Tab({ Title = "Main", Icon = "crosshair" })  
+    local TabSettings = Window:Tab({ Title = "Settings", Icon = "eye" })  
+    local TabInfo = Window:Tab({ Title = "Info", Icon = "info" })   
+
+    local AfkToggle, ItemToggle, VoteToggle, FullbrightToggle, BhopToggle  
+
+    AfkToggle = TabMain:Toggle({  
+        Title = "Afk Farm",  
+        Desc = "Sky/Fly",  
+        Value = false,  
+        Callback = function(state)  
+            local char = LocalPlayer.Character  
+            if char and char:GetAttribute("Downed") then return end   
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")  
+            if not hrp then return end  
+              
+            AfkFarmEnabled = state  
+            if noItemTimer < 15 then savedAfkState = AfkFarmEnabled end  
+              
+            if AfkFarmEnabled then  
+                originalPosition = hrp.Position + Vector3.new(0, 200, 0)  
+                hrp.CFrame = CFrame.new(originalPosition)  
+                task.wait(0.1)  
+                hrp.Anchored = true  
+            else  
+                hrp.Anchored = false  
+            end  
+        end  
+    })  
+
+    ItemToggle = TabMain:Toggle({  
+        Title = "Auto Tokens",  
+        Desc = "Auto farm token",  
+        Value = false,  
+        Callback = function(state)  
+            local char = LocalPlayer.Character  
+            if char and char:GetAttribute("Downed") then return end   
+            AutoItemEnabled = state  
+            if not isFakeMapDisabled then savedCollectState = AutoItemEnabled end  
+        end  
+    })  
+
+    BhopToggle = TabMain:Toggle({
+        Title = "Auto Jump",
+        Desc = "Show Button",
+        Value = false,
+        Callback = function(state)
+            BhopSystemMaster = state
+            if BhopSystemMaster then
+                EDashButton.Visible = true 
+            else
+                EDashButton.Visible = false
+                AutoBhopEnabled = false 
+                EDashButton.Text = "Bhop: OFF"
+            end
+        end
+    })
+
+    EDashButton.MouseButton1Click:Connect(function()
+        if not BhopSystemMaster then return end 
+        AutoBhopEnabled = not AutoBhopEnabled
+        if AutoBhopEnabled then
+            EDashButton.Text = "Bhop: ON"
+        else
+            EDashButton.Text = "Bhop: OFF"
+        end
+    end)
+
+    VoteToggle = TabMain:Toggle({  
+        Title = "Auto VoteMap",  
+        Desc = "Votemap",  
+        Value = false,  
+        Callback = function(state)  
+            AutoVoteEnabled = state  
+            savedVoteState = AutoVoteEnabled  
+        end  
+    })  
+
+    TabMain:Input({  
+        Title = "Name Map",  
+        Placeholder = "...",  
+        Callback = function(text)  
+            TargetMap = string.lower(text)  
+        end  
+    })  
+
+    FullbrightToggle = TabSettings:Toggle({  
+        Title = "Fullbright",  
+        Desc = "Brighten the map",  
+        Value = false,  
+        Callback = function(state)  
+            FullbrightEnabled = state  
+            if FullbrightEnabled then  
+                originalLighting.Ambient = Lighting.Ambient  
+                originalLighting.OutdoorAmbient = Lighting.OutdoorAmbient  
+                originalLighting.Brightness = Lighting.Brightness  
+                originalLighting.ClockTime = Lighting.ClockTime  
+                originalLighting.FogEnd = Lighting.FogEnd  
+                originalLighting.GlobalShadows = Lighting.GlobalShadows  
+
+                Lighting.Ambient = Color3.fromRGB(255, 255, 255)  
+                Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)  
+                Lighting.Brightness = 2  
+                Lighting.ClockTime = 14  
+                Lighting.FogEnd = 999999  
+                Lighting.GlobalShadows = false  
+            else  
+                Lighting.Ambient = originalLighting.Ambient  
+                Lighting.OutdoorAmbient = originalLighting.OutdoorAmbient  
+                Lighting.Brightness = originalLighting.Brightness  
+                Lighting.ClockTime = originalLighting.ClockTime  
+                Lighting.FogEnd = originalLighting.FogEnd  
+                Lighting.GlobalShadows = originalLighting.GlobalShadows  
+            end  
+        end  
+    })  
+
+    Lighting.Changed:Connect(function()  
+        if FullbrightEnabled then  
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)  
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)  
+            Lighting.Brightness = 2  
+            Lighting.ClockTime = 14  
+            Lighting.FogEnd = 999999  
+            Lighting.GlobalShadows = false  
+        end  
+    end)  
+
+    TabInfo:Button({  
+        Title = "Follow my tik tok",
+        Desc = "Copy Link",
+        Callback = function()
+            local url = "https://www.tiktok.com/@nghphg21011?_r=1&_t=ZS-98Alzxkeb25"
+            if setclipboard then
+                setclipboard(url)
+                UI_Library:Notification({
+                    Title = "KingEvent",
+                    Desc = "Đã sao chép link TikTok vào bộ nhớ tạm!",
+                    Type = "success"
+                })
+            else
+                print("TikTok Link: " .. url)
+            end
+        end
+    })
+
+    _G.UpdateWindUIVisuals = function()  
+        if AfkToggle then AfkToggle:Set(AfkFarmEnabled) end  
+        if ItemToggle then ItemToggle:Set(AutoItemEnabled) end  
+        if VoteToggle then VoteToggle:Set(AutoVoteEnabled) end  
+        if FullbrightToggle then FullbrightToggle:Set(FullbrightEnabled) end  
+        if BhopToggle then BhopToggle:Set(BhopSystemMaster) end
+    end
+else
+    warn("Không thể tải thư viện WindUI trực tuyến!")
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Space and BhopSystemMaster then
+        AutoBhopEnabled = true
+        EDashButton.Text = "Bhop: ON"
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space and BhopSystemMaster then
+        AutoBhopEnabled = false
+        EDashButton.Text = "Bhop: OFF"
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not BhopSystemMaster or not AutoBhopEnabled then return end
+    
+    local char = LocalPlayer.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    
+    if humanoid and humanoid.Health > 0 then
+        if humanoid.FloorMaterial ~= Enum.Material.Air then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+local function getVoteSlotForMap(mapName)
+    if mapName == "" then return nil end
+    for _, v in pairs(PlayerGui:GetDescendants()) do
+        if v:IsA("TextLabel") and v.Visible then
+            local textLower = string.lower(v.Text)
+            if string.find(textLower, mapName, 1, true) then
+                local current = v
+                while current and current ~= PlayerGui do
+                    local num = tonumber(current.Name) or tonumber(string.match(current.Name, "%d+"))
+                    if num and num >= 1 and num <= 4 then return num end
+                    current = current.Parent
+                end
+            end
+        end
+    end
+    return nil
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if AutoVoteEnabled and TargetMap ~= "" then
+            local slot = getVoteSlotForMap(TargetMap)
+            if slot then
+                pcall(function() ReplicatedStorage.Events.Vote:FireServer(slot) end)
+            end
+        end
+    end
+end)
+
+local function isPlayerAsset(instance)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character and instance:IsDescendantOf(player.Character) then return true end
+    end
+    return false
+end
+
+local function getAllItems()
+    local items = {}
+    local currentRawParts = {}
+
+    for _, v in pairs(workspace:GetDescendants()) do  
+        if (v:IsA("BasePart") or v:IsA("Model")) then  
+            local nameLower = string.lower(v.Name)  
+            if string.find(nameLower, "bubble") or string.find(nameLower, "coconut") then  
+                local isVisualEffect = v:FindFirstChildWhichIsA("ParticleEmitter")   
+                                    or v:FindFirstChildWhichIsA("Trail")   
+                                    or v:FindFirstChildWhichIsA("Beam")  
+                                    or v.ClassName == "Accessory"  
+                local hasAnimation = v:FindFirstChildWhichIsA("Animation") or v:FindFirstChildWhichIsA("Animator")  
+                  
+                if not isVisualEffect and not hasAnimation and not isPlayerAsset(v) then  
+                    local part = v:IsA("BasePart") and v or v:FindFirstChildWhichIsA("BasePart")  
+                    if part then table.insert(currentRawParts, part) end  
+                end  
+            end  
+        end  
+    end  
+
+    for _, part in ipairs(currentRawParts) do  
+        local partId = part:GetDebugId()  
+        local currentPos = part.Position  
+        local lastPos = itemPositionCache[partId]  
+
+        if lastPos then  
+            if (currentPos - lastPos).Magnitude <= 1 then table.insert(items, part) end  
+        else  
+            table.insert(items, part)  
+        end  
+        itemPositionCache[partId] = currentPos  
+    end  
+
+    for id, _ in pairs(itemPositionCache) do  
+        local found = false  
+        for _, part in ipairs(currentRawParts) do  
+            if part:GetDebugId() == id then found = true; break end  
+        end  
+        if not found then itemPositionCache[id] = nil end  
+    end  
+
+    ItemLabel.Text = "Token: " .. #items  
+    return items
+end
+
+local lastNextbotCheck = 0
+local nextbotCachePositions = {}
+
+local function updateNextbotCache()
+    if os.clock() - lastNextbotCheck < 0.15 then return end 
+    lastNextbotCheck = os.clock()
+    table.clear(nextbotCachePositions)
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:GetAttribute("Nextbot") == true then
+            local root = v:FindFirstChild("HumanoidRootPart") or v:FindFirstChildWhichIsA("BasePart")
+            if root then table.insert(nextbotCachePositions, root.Position) end
+        end
+    end
+end
+
+local function isNextbotNear(position, range)
+    range = range or 20
+    updateNextbotCache()
+    for _, nbotPos in ipairs(nextbotCachePositions) do
+        if (position - nbotPos).Magnitude <= range then return true end
+    end
+    return false
+end
+
+local function getClosestSafeItem(hrp, items)
+    local closest, minDst = nil, math.huge
+    for _, part in ipairs(items) do
+        local dst = (hrp.Position - part.Position).Magnitude
+        if dst < minDst and not isNextbotNear(part.Position, 25) then
+            closest = part
+            minDst = dst
+        end
+    end
+    return closest
+end
+
+local function safeTeleportTo(hrp, targetPos, duration)
+    local startPos = hrp.Position
+    local startTime = os.clock()
+    local successMove = true
+    
+    while os.clock() - startTime < duration do
+        local alpha = (os.clock() - startTime) / duration
+        if alpha > 1 then alpha = 1 end
+        
+        local currentLerpPos = startPos:Lerp(targetPos, alpha)
+        hrp.CFrame = CFrame.new(currentLerpPos)
+        
+        if isNextbotNear(hrp.Position, 22) or isNextbotNear(targetPos, 22) then   
+            successMove = false
+            break 
+        end
+        RunService.Heartbeat:Wait() 
+    end
+    
+    if successMove then
+        hrp.CFrame = CFrame.new(targetPos)
+    end
+    return successMove
+end
+
+task.spawn(function()
+    while true do
+        local items = getAllItems()
+        local char = LocalPlayer.Character
+        local isDowned = char and char:GetAttribute("Downed")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if #items > 50 then  
+              if not isFakeMapDisabled then  
+              isFakeMapDisabled = true  
+                 AutoItemEnabled = false   
+                if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+                  
+                if UI_Library and UI_Library.Notification then  
+                    UI_Library:Notification({  
+                        Title = "Anti-Fake Map",  
+                        Desc = "Phát hiện map lỗi (>50 model). Đã ngắt Auto Tokens, giữ nguyên AFK!",  
+                        Type = "warning"  
+                    })  
+                end  
+            end  
+        else  
+            if isFakeMapDisabled then  
+                isFakeMapDisabled = false  
+                AutoItemEnabled = savedCollectState   
+                if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+            end  
+        end  
+
+        if #items == 0 then  
+            noItemTimer = noItemTimer + 0.5  
+            if noItemTimer >= 15 and AfkFarmEnabled and not isDowned then  
+                AfkFarmEnabled = false  
+                if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+                if hrp then hrp.Anchored = false end  
+            end  
+        else  
+            noItemTimer = 0   
+            if savedAfkState and not AfkFarmEnabled and not isDowned then  
+                task.wait(0.5)   
+                local recheckItems = getAllItems()  
+                if #recheckItems > 0 and not (char and char:GetAttribute("Downed")) then  
+                    AfkFarmEnabled = true  
+                    if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+                    if hrp then  
+                        originalPosition = hrp.Position + Vector3.new(0, 200, 0)  
+                        hrp.CFrame = CFrame.new(originalPosition)  
+                        task.wait(0.1)  
+                        hrp.Anchored = true  
+                    end  
+                end  
+            end  
+        end  
+
+        if AutoItemEnabled and not isDowned and #items > 0 and hrp and not isFakeMapDisabled then  
+            local item = getClosestSafeItem(hrp, items)  
+              
+            if item and not isNextbotNear(item.Position, 25) and not isNextbotNear(hrp.Position, 25) then  
+                local startPos = hrp.Position  
+                hrp.Anchored = false  
+                  
+                local successMove = safeTeleportTo(hrp, item.Position, 0.12)  
+                  
+                if successMove and not isNextbotNear(hrp.Position, 22) then  
+                    pcall(function()  
+                        local collectId = item.Parent:GetAttribute("Id") or item:GetAttribute("Id") or "a19ac91bff904b7385e826fd6a23dc01"  
+                        ReplicatedStorage.Events.Interact:FireServer("Collect", collectId)  
+                    end)  
+                    task.wait(0.9)  
+                end  
+                  
+                isDowned = char and char:GetAttribute("Downed")  
+                if AutoItemEnabled and not isDowned and noItemTimer < 15 then  
+                    if AfkFarmEnabled and originalPosition then  
+                        safeTeleportTo(hrp, originalPosition, 0.1)  
+                        hrp.Anchored = true  
+                    else  
+                        safeTeleportTo(hrp, startPos, 0.1)  
+                    end  
+                end  
+            end  
+        end  
+        task.wait(1.0)   
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        local char = LocalPlayer.Character
+        local isDowned = char and char:GetAttribute("Downed")
+
+        if AfkFarmEnabled and not isDowned and originalPosition then  
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")  
+            if hrp then  
+                if isNextbotNear(hrp.Position, 25) then  
+                    hrp.Anchored = false  
+                    originalPosition = originalPosition + Vector3.new(0, 80, 0)  
+                    hrp.CFrame = CFrame.new(originalPosition)  
+                    task.wait(0.05)  
+                    hrp.Anchored = true  
+                end  
+            end  
+        end  
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(2)
+        local char = LocalPlayer.Character
+        local isDowned = char and char:GetAttribute("Downed")
+
+        if AfkFarmEnabled and not AutoItemEnabled and not isDowned and noItemTimer < 15 then  
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")  
+            if hrp and hrp.Anchored == false then  
+                originalPosition = hrp.Position + Vector3.new(0, 200, 0)  
+                hrp.CFrame = CFrame.new(originalPosition)  
+                task.wait(0.1)  
+                hrp.Anchored = true  
+            end  
+        end  
+    end
+end)
+
+local function setupCharacter(char)
+    char:GetAttributeChangedSignal("Downed"):Connect(function()
+        local isDowned = char:GetAttribute("Downed")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+
+        if isDowned then  
+            AutoItemEnabled = false  
+            AfkFarmEnabled = false  
+            if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+            if hrp then hrp.Anchored = false end  
+        else  
+            task.wait(1)  
+            if hrp then  
+                originalPosition = hrp.Position + Vector3.new(0, 200, 0)  
+                hrp.CFrame = CFrame.new(originalPosition)  
+                task.wait(0.2)  
+                hrp.Anchored = true  
+                  
+                AfkFarmEnabled = savedAfkState  
+                if not isFakeMapDisabled then AutoItemEnabled = savedCollectState end  
+                if _G.UpdateWindUIVisuals then _G.UpdateWindUIVisuals() end  
+            end  
+        end  
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char) setupCharacter(char) end)
+if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
+
+LocalPlayer.Idled:Connect(function()
+    local virtualUser = game:GetService("VirtualUser")
+    virtualUser:CaptureController()
+    virtualUser:ClickButton2(Vector2.new(0, 0))
+end)
